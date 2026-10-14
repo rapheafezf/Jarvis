@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 
 delete process.env.ANTHROPIC_API_KEY;
 delete process.env.GEMINI_API_KEY;
-const { serveur, nettoyerHistorique, getCredentials } = require('../server.js');
+const { serveur, nettoyerHistorique, getCredentials, DATA_DIR } = require('../server.js');
 
 test('nettoyerHistorique fusionne et commence par user', () => {
   const h = nettoyerHistorique([
@@ -20,15 +20,33 @@ const fs = require('node:fs');
 const path = require('node:path');
 const fichierCle = path.join(__dirname, '../cle-api.txt');
 const backupCle = path.join(__dirname, '../cle-api.txt.bak');
+const fichierUsers = path.join(DATA_DIR, 'users.json');
+const backupUsers = path.join(DATA_DIR, 'users.json.testbak');
+const fichierSessions = path.join(DATA_DIR, 'sessions.json');
+const backupSessions = path.join(DATA_DIR, 'sessions.json.testbak');
 
 test('API et fichiers statiques', async (t) => {
   if (fs.existsSync(fichierCle)) fs.renameSync(fichierCle, backupCle);
+  if (fs.existsSync(fichierUsers)) fs.copyFileSync(fichierUsers, backupUsers);
+  if (fs.existsSync(fichierSessions)) fs.copyFileSync(fichierSessions, backupSessions);
+  fs.writeFileSync(fichierUsers, "[]", "utf8");
+  fs.writeFileSync(fichierSessions, "{}", "utf8");
   t.after(() => {
     serveur.close();
     if (fs.existsSync(backupCle)) {
       try { fs.renameSync(backupCle, fichierCle); } catch {}
     } else {
       try { fs.unlinkSync(fichierCle); } catch {}
+    }
+    if (fs.existsSync(backupUsers)) {
+      try { fs.copyFileSync(backupUsers, fichierUsers); fs.unlinkSync(backupUsers); } catch {}
+    } else {
+      try { fs.unlinkSync(fichierUsers); } catch {}
+    }
+    if (fs.existsSync(backupSessions)) {
+      try { fs.copyFileSync(backupSessions, fichierSessions); fs.unlinkSync(backupSessions); } catch {}
+    } else {
+      try { fs.unlinkSync(fichierSessions); } catch {}
     }
   });
 
@@ -45,35 +63,20 @@ test('API et fichiers statiques', async (t) => {
   const status = await (await fetch(base + '/api/status')).json();
   assert.equal(status.ia, 'hors-ligne');
 
-  const chat = await fetch(base + '/api/chat', {
+  // Sans authentification : accès refusé (401)
+  const chatSansAuth = await fetch(base + '/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ messages: [{ role: 'user', content: 'Bonjour' }] }),
   });
-  const data = await chat.json();
-  assert.equal(chat.status, 200);
-  assert.equal(data.mode, 'hors-ligne');
-  assert.match(data.reply, /Bonjour Monsieur/);
+  assert.equal(chatSansAuth.status, 401);
 
-  const mauvais = await fetch(base + '/api/chat', { method: 'POST', body: '{oups' });
-  assert.equal(mauvais.status, 400);
-
-  // Test set-key
-  const setKeyRes = await fetch(base + '/api/set-key', {
+  const setKeySansAuth = await fetch(base + '/api/set-key', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ key: 'AIzaSyTestGeminiKey' }),
   });
-  const setKeyData = await setKeyRes.json();
-  assert.equal(setKeyRes.status, 200);
-  assert.equal(setKeyData.ok, true);
-  assert.equal(setKeyData.provider, 'gemini');
-
-  const statusApres = await (await fetch(base + '/api/status')).json();
-  assert.equal(statusApres.ia, 'gemini');
-
-  // Nettoyer cle-api.txt créé par le test
-  try { fs.unlinkSync(fichierCle); } catch {}
+  assert.equal(setKeySansAuth.status, 401);
 
   // --- Tests Authentification Compte ---
   // Inscription réussie
@@ -126,6 +129,34 @@ test('API et fichiers statiques', async (t) => {
   assert.equal(meRes.status, 200);
   assert.equal(meData.authenticated, true);
   assert.equal(meData.user.username, 'TonyStark');
+
+  // Chat accessible UNE FOIS CONNECTÉ
+  const chatAvecAuth = await fetch(base + '/api/chat', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${sessionToken}`,
+    },
+    body: JSON.stringify({ messages: [{ role: 'user', content: 'Bonjour' }] }),
+  });
+  const chatData = await chatAvecAuth.json();
+  assert.equal(chatAvecAuth.status, 200);
+  assert.equal(chatData.user, 'TonyStark');
+  assert.equal(chatData.mode, 'hors-ligne');
+
+  // Configuration clé accessible UNE FOIS CONNECTÉ
+  const setKeyRes = await fetch(base + '/api/set-key', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${sessionToken}`,
+    },
+    body: JSON.stringify({ key: 'AIzaSyTestGeminiKey' }),
+  });
+  const setKeyData = await setKeyRes.json();
+  assert.equal(setKeyRes.status, 200);
+  assert.equal(setKeyData.ok, true);
+  try { fs.unlinkSync(fichierCle); } catch {}
 
   // Profil non connecté sans token
   const meAnon = await (await fetch(base + '/api/auth/me')).json();

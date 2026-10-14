@@ -6,9 +6,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 
+const isVercel = Boolean(process.env.VERCEL);
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC = path.join(__dirname, 'public');
-const DATA_DIR = path.join(__dirname, 'data');
+const DATA_DIR = isVercel ? path.join('/tmp', 'jarvis-data') : path.join(__dirname, 'data');
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
 
@@ -203,15 +204,17 @@ function getCredentials() {
   if (process.env.ANTHROPIC_API_KEY) {
     return { provider: 'claude', key: process.env.ANTHROPIC_API_KEY.trim() };
   }
-  const fichierCle = path.join(__dirname, 'cle-api.txt');
-  if (fs.existsSync(fichierCle)) {
-    try {
-      const cle = fs.readFileSync(fichierCle, 'utf8').trim();
-      if (cle) {
-        if (cle.startsWith('sk-ant-')) return { provider: 'claude', key: cle };
-        return { provider: 'gemini', key: cle };
-      }
-    } catch {}
+  const chemins = [path.join(__dirname, "cle-api.txt"), path.join("/tmp", "cle-api.txt")];
+  for (const fichierCle of chemins) {
+    if (fs.existsSync(fichierCle)) {
+      try {
+        const cle = fs.readFileSync(fichierCle, "utf8").trim();
+        if (cle) {
+          if (cle.startsWith("sk-ant-")) return { provider: "claude", key: cle };
+          return { provider: "gemini", key: cle };
+        }
+      } catch {}
+    }
   }
   return { provider: null, key: '' };
 }
@@ -426,6 +429,15 @@ async function demanderClaude(messages, apiKey, webContext = '', customSystem = 
 }
 
 async function gererChat(req, res) {
+  // Sécurité : l'accès est strictement réservé aux utilisateurs ayant créé un compte
+  const user = obtenirUtilisateurDepuisRequete(req);
+  if (!user) {
+    return envoyerJson(res, 401, {
+      ok: false,
+      error: 'Accès refusé. Veuillez créer un compte ou vous connecter pour accéder à J.A.R.V.I.S.',
+    });
+  }
+
   let corps;
   try {
     corps = JSON.parse(await lireCorps(req));
@@ -438,19 +450,15 @@ async function gererChat(req, res) {
   }
   const question = messages[messages.length - 1].content;
   const { provider, key } = getCredentials();
-  if (!key) return envoyerJson(res, 200, { reply: reponseHorsLigne(question), mode: 'hors-ligne' });
+  if (!key) return envoyerJson(res, 200, { reply: reponseHorsLigne(question), mode: 'hors-ligne', user: user.username });
 
   // Personnalisation en fonction de l'utilisateur connecté
-  const user = obtenirUtilisateurDepuisRequete(req);
-  let customSystem = '';
-  if (user && user.username) {
-    customSystem = [
-      `Tu es J.A.R.V.I.S., l'assistant IA de Tony Stark, actuellement au service de votre interlocuteur : ${user.username}.`,
-      `Réponds TOUJOURS en français, avec un ton poli, posé et légèrement pince-sans-rire.`,
-      `Appelle l'utilisateur « Monsieur ${user.username} » (ou « Madame » s'il le précise).`,
-      `Tes réponses sont lues à voix haute : 1 à 3 phrases courtes, pas de markdown, pas de listes, pas d'emoji.`,
-    ].join(' ');
-  }
+  const customSystem = [
+    `Tu es J.A.R.V.I.S., l'assistant IA de Tony Stark, actuellement au service de votre interlocuteur : ${user.username}.`,
+    `Réponds TOUJOURS en français, avec un ton poli, posé et légèrement pince-sans-rire.`,
+    `Appelle l'utilisateur « Monsieur ${user.username} » (ou « Madame » s'il le précise).`,
+    `Tes réponses sont lues à voix haute : 1 à 3 phrases courtes, pas de markdown, pas de listes, pas d'emoji.`,
+  ].join(' ');
 
   let webContext = '';
   let webRecherche = false;
@@ -479,11 +487,15 @@ async function gererChat(req, res) {
 }
 
 async function gererCleApi(req, res) {
+  const user = obtenirUtilisateurDepuisRequete(req);
+  if (!user) {
+    return envoyerJson(res, 401, { error: 'Accès refusé. Authentification requise.' });
+  }
   try {
     const data = JSON.parse(await lireCorps(req));
     const cle = String(data.key || '').trim();
     if (!cle) return envoyerJson(res, 400, { error: 'Clé vide' });
-    const fichierCle = path.join(__dirname, 'cle-api.txt');
+    const fichierCle = isVercel ? path.join('/tmp', 'cle-api.txt') : path.join(__dirname, 'cle-api.txt');
     fs.writeFileSync(fichierCle, cle, 'utf8');
     const { provider } = getCredentials();
     return envoyerJson(res, 200, { ok: true, provider });
@@ -516,9 +528,14 @@ function servirFichier(req, res) {
   });
 }
 
-const serveur = http.createServer(async (req, res) => {
+async function requestHandler(req, res) {
+  let pathname = '/';
+  try {
+    pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
+  } catch {}
+
   // --- Routes d'authentification ---
-  if (req.url === '/api/auth/register' && req.method === 'POST') {
+  if (pathname === '/api/auth/register' && req.method === 'POST') {
     try {
       const data = JSON.parse(await lireCorps(req));
       const result = inscrireUtilisateur(data.username, data.password);
@@ -528,7 +545,7 @@ const serveur = http.createServer(async (req, res) => {
     }
   }
 
-  if (req.url === '/api/auth/login' && req.method === 'POST') {
+  if (pathname === '/api/auth/login' && req.method === 'POST') {
     try {
       const data = JSON.parse(await lireCorps(req));
       const result = connecterUtilisateur(data.username, data.password);
@@ -538,22 +555,22 @@ const serveur = http.createServer(async (req, res) => {
     }
   }
 
-  if (req.url === '/api/auth/me' && req.method === 'GET') {
+  if (pathname === '/api/auth/me' && req.method === 'GET') {
     const user = obtenirUtilisateurDepuisRequete(req);
     if (!user) return envoyerJson(res, 200, { authenticated: false });
     return envoyerJson(res, 200, { authenticated: true, user: { id: user.id, username: user.username } });
   }
 
-  if (req.url === '/api/auth/logout' && req.method === 'POST') {
+  if (pathname === '/api/auth/logout' && req.method === 'POST') {
     const user = obtenirUtilisateurDepuisRequete(req);
     if (user) deconnecterUtilisateur(user.token);
     return envoyerJson(res, 200, { ok: true });
   }
 
   // --- Routes IA et Clé ---
-  if (req.url === '/api/chat' && req.method === 'POST') return void gererChat(req, res);
-  if (req.url === '/api/set-key' && req.method === 'POST') return void gererCleApi(req, res);
-  if (req.url === '/api/status') {
+  if (pathname === '/api/chat' && req.method === 'POST') return void gererChat(req, res);
+  if (pathname === '/api/set-key' && req.method === 'POST') return void gererCleApi(req, res);
+  if (pathname === '/api/status') {
     const { provider } = getCredentials();
     const model = provider === 'gemini'
       ? (process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite')
@@ -568,7 +585,9 @@ const serveur = http.createServer(async (req, res) => {
     return res.end();
   }
   servirFichier(req, res);
-});
+}
+
+const serveur = http.createServer(requestHandler);
 
 function ouvrirNavigateur(url) {
   const { spawn } = require('node:child_process');
@@ -609,16 +628,18 @@ function demarrer(port, essais = 10) {
   });
 }
 
-if (require.main === module) demarrer(PORT);
+if (require.main === module && !isVercel) demarrer(PORT);
 
-module.exports = {
-  serveur,
-  nettoyerHistorique,
-  reponseHorsLigne,
-  getCredentials,
-  inscrireUtilisateur,
-  connecterUtilisateur,
-  obtenirUtilisateurDepuisRequete,
-  deconnecterUtilisateur,
-  DATA_DIR,
-};
+const handler = (req, res) => requestHandler(req, res);
+handler.serveur = serveur;
+handler.requestHandler = requestHandler;
+handler.nettoyerHistorique = nettoyerHistorique;
+handler.reponseHorsLigne = reponseHorsLigne;
+handler.getCredentials = getCredentials;
+handler.inscrireUtilisateur = inscrireUtilisateur;
+handler.connecterUtilisateur = connecterUtilisateur;
+handler.obtenirUtilisateurDepuisRequete = obtenirUtilisateurDepuisRequete;
+handler.deconnecterUtilisateur = deconnecterUtilisateur;
+handler.DATA_DIR = DATA_DIR;
+
+module.exports = handler;

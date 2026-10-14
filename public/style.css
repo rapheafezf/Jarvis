@@ -510,4 +510,35 @@ main {
   margin-top: 8px;
 }
 
+/* ---------- Verrou de Sécurité Global ---------- */
+body.verrouille main {
+  filter: blur(16px) brightness(0.25);
+  pointer-events: none;
+  user-select: none;
+  transition: filter 0.4s ease, brightness 0.4s ease;
+}
+
+body.verrouille .btn-menu,
+body.verrouille #btn-config-cle {
+  pointer-events: none;
+  opacity: 0.2;
+}
+
+.modal-auth-gate {
+  background: rgba(3, 7, 18, 0.92);
+  backdrop-filter: blur(12px);
+  z-index: 1000;
+}
+
+body.verrouille .modal-auth-gate .btn-fermer {
+  display: none !important;
+}
+
+.badge-alerte {
+  color: #ffb703 !important;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+}
+
+
 

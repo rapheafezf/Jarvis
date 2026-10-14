@@ -256,7 +256,15 @@
     }
   }
 
+  function estVerrouille() {
+    return document.body.classList.contains('verrouille');
+  }
+
   function basculerMicro() {
+    if (estVerrouille()) {
+      if (typeof ouvrirModalAuth === 'function') ouvrirModalAuth('register');
+      return;
+    }
     if (!SR) {
       setStatut('Reconnaissance vocale non supportée : utilisez Chrome ou Edge, ou tapez votre commande.');
       entree.focus();
@@ -485,6 +493,13 @@
         }),
         signal: ctrl.signal,
       });
+      if (r.status === 401) {
+        attente.remove();
+        if (Reacteur.getMode() === 'reflexion') Reacteur.setMode('repos');
+        setStatut('');
+        if (typeof verrouillerApplication === 'function') verrouillerApplication();
+        return repondre('Accès refusé. Veuillez créer un compte ou vous connecter.');
+      }
       const data = await r.json();
       attente.remove();
       if (!r.ok) throw new Error(data.error || 'HTTP ' + r.status);
@@ -503,6 +518,10 @@
   }
 
   function traiter(texte) {
+    if (estVerrouille()) {
+      if (typeof ouvrirModalAuth === 'function') ouvrirModalAuth('register');
+      return;
+    }
     texte = texte.trim();
     if (!texte) return;
     taire();
@@ -524,6 +543,7 @@
   $('reacteur').addEventListener('click', basculerMicro);
   btnMicro.addEventListener('click', basculerMicro);
   document.addEventListener('keydown', (e) => {
+    if (estVerrouille()) return;
     if (e.code === 'Space' && !['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON'].includes(document.activeElement.tagName)) {
       e.preventDefault();
       basculerMicro();
@@ -736,7 +756,7 @@
     });
   }
 
-  // ---------- Authentification & Gestion de Session ----------
+  // ---------- Authentification & Gestion de Session Sécurisée ----------
   let utilisateurCourant = null;
   const modalAuth = $('modal-auth');
   const btnOuvrirAuth = $('btn-connexion');
@@ -755,7 +775,7 @@
   const menuNomUser = $('menu-nom-utilisateur');
   const menuBtnAuth = $('menu-btn-auth');
 
-  let modeAuth = 'login'; // 'login' ou 'register'
+  let modeAuth = 'register'; // Par défaut, inviter à créer un compte
 
   function majInterfaceUtilisateur(user) {
     utilisateurCourant = user;
@@ -770,17 +790,51 @@
       if (hudConnecte) hudConnecte.hidden = true;
       if (labelNomUser) labelNomUser.textContent = '👤 Invité';
       if (menuNomUser) menuNomUser.textContent = 'Non connecté';
-      if (menuBtnAuth) menuBtnAuth.textContent = '👤 Connexion / Inscription';
+      if (menuBtnAuth) menuBtnAuth.textContent = '👤 Créer un compte / Connexion';
     }
   }
 
-  function ouvrirModalAuth(mode = 'login') {
+  function verrouillerApplication() {
+    document.body.classList.add('verrouille');
+    utilisateurCourant = null;
+    majInterfaceUtilisateur(null);
+    if (modalAuth) modalAuth.hidden = false;
+    if (btnFermerAuth) btnFermerAuth.hidden = true;
+    basculerModeAuth('register');
+    setStatut('Unité verrouillée. Compte obligatoire pour accéder au système.');
+    if (window.Reacteur && typeof Reacteur.setMode === 'function') {
+      Reacteur.setMode('sommeil');
+    }
+  }
+
+  function deverrouillerApplication(user, annonce = false) {
+    document.body.classList.remove('verrouille');
+    majInterfaceUtilisateur(user);
+    if (modalAuth) modalAuth.hidden = true;
+    if (btnFermerAuth) btnFermerAuth.hidden = false;
+    setStatut('Touchez le réacteur ou appuyez sur Espace pour parler');
+    if (window.Reacteur && typeof Reacteur.setMode === 'function') {
+      Reacteur.setMode('repos');
+    }
+    const msg = `Accès accordé, Monsieur ${user.username}. J.A.R.V.I.S. en ligne et prêt à vous assister.`;
+    if (annonce) {
+      ajouterMessage('jarvis', msg);
+      parler(msg);
+    } else if (historique.length === 0) {
+      ajouterMessage('jarvis', msg);
+    }
+  }
+
+  function ouvrirModalAuth(mode = 'register') {
     if (!modalAuth) return;
     modeAuth = mode;
     modalAuth.hidden = false;
     msgAuth.textContent = '';
     msgAuth.className = 'modal-msg';
     basculerModeAuth(mode);
+    if (btnFermerAuth) {
+      btnFermerAuth.hidden = estVerrouille();
+    }
     if (inputIdentifiant) {
       inputIdentifiant.value = '';
       inputIdentifiant.focus();
@@ -789,6 +843,7 @@
   }
 
   function fermerModalAuth() {
+    if (estVerrouille()) return; // IMPOSSIBLE de fermer sans être connecté
     if (modalAuth) modalAuth.hidden = true;
   }
 
@@ -799,20 +854,20 @@
     if (mode === 'login') {
       ongletConnexion?.classList.add('actif');
       ongletInscription?.classList.remove('actif');
-      if (titreAuthModal) titreAuthModal.textContent = 'Connexion au Système';
+      if (titreAuthModal) titreAuthModal.textContent = estVerrouille() ? 'AUTHENTIFICATION REQUISE' : 'Connexion au Système';
       if (btnAuthValider) btnAuthValider.textContent = 'Se connecter';
     } else {
       ongletInscription?.classList.add('actif');
       ongletConnexion?.classList.remove('actif');
-      if (titreAuthModal) titreAuthModal.textContent = 'Création de Compte';
-      if (btnAuthValider) btnAuthValider.textContent = 'Créer mon compte';
+      if (titreAuthModal) titreAuthModal.textContent = estVerrouille() ? 'CRÉATION DE COMPTE OBLIGATOIRE' : 'Créer un compte';
+      if (btnAuthValider) btnAuthValider.textContent = 'Créer mon compte et déverrouiller';
     }
   }
 
   async function verifierSessionExistante() {
     const token = lireStockage('jarvis-auth-token');
     if (!token) {
-      majInterfaceUtilisateur(null);
+      verrouillerApplication();
       return;
     }
     try {
@@ -821,13 +876,13 @@
       });
       const data = await res.json();
       if (data.authenticated && data.user) {
-        majInterfaceUtilisateur(data.user);
+        deverrouillerApplication(data.user, false);
       } else {
         ecrireStockage('jarvis-auth-token', '');
-        majInterfaceUtilisateur(null);
+        verrouillerApplication();
       }
     } catch {
-      majInterfaceUtilisateur(null);
+      verrouillerApplication();
     }
   }
 
@@ -835,7 +890,7 @@
   if (btnFermerAuth) btnFermerAuth.addEventListener('click', fermerModalAuth);
   if (modalAuth) {
     modalAuth.addEventListener('click', (e) => {
-      if (e.target === modalAuth) fermerModalAuth();
+      if (e.target === modalAuth && !estVerrouille()) fermerModalAuth();
     });
   }
 
@@ -848,7 +903,7 @@
       if (utilisateurCourant) {
         deconnecterSession();
       } else {
-        ouvrirModalAuth('login');
+        ouvrirModalAuth('register');
       }
     });
   }
@@ -864,9 +919,9 @@
       } catch {}
     }
     ecrireStockage('jarvis-auth-token', '');
-    majInterfaceUtilisateur(null);
-    ajouterMessage('jarvis', 'Session fermée, Monsieur. Mode invité activé.');
-    parler('Session fermée, Monsieur.');
+    taire();
+    verrouillerApplication();
+    ajouterMessage('jarvis', 'Session fermée, Monsieur. Accès verrouillé.');
   }
 
   if (btnDeconnexion) btnDeconnexion.addEventListener('click', deconnecterSession);
@@ -879,7 +934,7 @@
       if (!username || !password) return;
 
       btnAuthValider.disabled = true;
-      msgAuth.textContent = modeAuth === 'login' ? 'Connexion en cours…' : 'Création du compte…';
+      msgAuth.textContent = modeAuth === 'login' ? 'Vérification des codes…' : 'Création du compte et chiffrement…';
       msgAuth.className = 'modal-msg';
 
       const endpoint = modeAuth === 'login' ? '/api/auth/login' : '/api/auth/register';
@@ -893,15 +948,11 @@
         const data = await res.json();
         if (data.ok && data.token) {
           ecrireStockage('jarvis-auth-token', data.token);
-          majInterfaceUtilisateur(data.user);
-          const bienvenue = modeAuth === 'login'
-            ? `Bienvenue de retour, Monsieur ${data.user.username}.`
-            : `Compte initialisé. Ravi de vous rencontrer, Monsieur ${data.user.username}.`;
-          msgAuth.textContent = '✅ ' + bienvenue;
+          msgAuth.textContent = '✅ Accès accordé. Déverrouillage des systèmes…';
           msgAuth.className = 'modal-msg succes';
-          ajouterMessage('jarvis', bienvenue);
-          parler(bienvenue);
-          setTimeout(fermerModalAuth, 1200);
+          setTimeout(() => {
+            deverrouillerApplication(data.user, true);
+          }, 600);
         } else {
           msgAuth.textContent = 'Erreur : ' + (data.error || 'Identifiants invalides');
           msgAuth.className = 'modal-msg erreur';
@@ -919,9 +970,8 @@
   verifierSessionExistante();
 
   if (!SR) btnMicro.title = 'Reconnaissance vocale non supportée par ce navigateur';
-  ajouterMessage('jarvis', 'Bonjour Monsieur. J.A.R.V.I.S. en ligne. Touchez le réacteur pour me parler, ou ouvrez le MENU.');
   if (location.protocol === 'file:') {
-    ajouterMessage('jarvis', 'Attention Monsieur : cette page a été ouverte directement depuis le disque. Le micro et l\'IA ne fonctionnent pas ainsi. Lancez plutôt demarrer.bat (Windows) ou demarrer.sh (Mac/Linux), puis utilisez l\'adresse http://localhost:3000.');
+    ajouterMessage('jarvis', 'Attention : cette page a été ouverte directement depuis le disque. Lancez plutôt http://localhost:3000.');
   }
 
   // Exposé pour les tests
