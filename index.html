@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>J.A.R.V.I.S.</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='none' stroke='%2300e5ff' stroke-width='3'/%3E%3Ccircle cx='16' cy='16' r='5' fill='%2300e5ff'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="verrouille">
+  <div class="grille" aria-hidden="true"></div>
+
+  <header class="hud-haut">
+    <div class="hud-gauche">
+      <button id="btn-ouvrir-menu" class="btn-menu" type="button" aria-label="Ouvrir le menu">☰ MENU</button>
+      <div class="logo">J.A.R.V.I.S.</div>
+    </div>
+    <div class="hud-infos">
+      <span id="horloge">--:--:--</span>
+      <span id="etat-ia" class="pastille">IA…</span>
+      <button id="btn-config-cle" class="btn-hud" type="button" title="Configurer la clé API">⚙️ Clé API</button>
+      <div id="hud-utilisateur-zone" class="hud-user-zone">
+        <button id="btn-connexion" class="btn-hud btn-auth" type="button">👤 Connexion</button>
+        <div id="hud-connecte" class="hud-connecte" hidden>
+          <span id="nom-utilisateur" class="badge-user">👤 Invité</span>
+          <button id="btn-deconnexion" class="btn-hud btn-deco" type="button" title="Se déconnecter">🚪</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Menu Latéral HUD -->
+  <aside id="menu-lateral" class="menu-lateral" hidden>
+    <div class="menu-fond" id="menu-overlay"></div>
+    <div class="menu-panel">
+      <div class="menu-entete">
+        <div class="menu-titre-bloc">
+          <span class="menu-badge">STARK INDUSTRIES</span>
+          <h2>J.A.R.V.I.S. // SYSTÈME</h2>
+        </div>
+        <button id="btn-fermer-menu" class="btn-fermer" type="button" aria-label="Fermer le menu">✕</button>
+      </div>
+
+      <div class="menu-corps">
+        <!-- Section Statut -->
+        <div class="menu-section">
+          <div class="section-titre">STATUT DE L'UNITÉ</div>
+          <div class="statut-carte">
+            <div class="statut-ligne">
+              <span>Moteur IA</span>
+              <span id="menu-statut-ia" class="valeur-cyan">Gemini 3.5 Flash Lite</span>
+            </div>
+            <div class="statut-ligne">
+              <span>Clé API</span>
+              <button id="menu-btn-cle" class="btn-lien" type="button">⚙️ Modifier la clé</button>
+            </div>
+            <div class="statut-ligne">
+              <span>Recherche Web Live</span>
+              <label class="interrupteur">
+                <input id="opt-recherche-web" type="checkbox" checked>
+                <span class="curseur"></span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section Profil & Utilisateur -->
+        <div class="menu-section">
+          <div class="section-titre">UTILISATEUR & COMPTE</div>
+          <div class="statut-carte">
+            <div class="statut-ligne">
+              <span>Profil actif</span>
+              <span id="menu-nom-utilisateur" class="valeur-cyan">Non connecté</span>
+            </div>
+            <div class="statut-ligne">
+              <span>Session</span>
+              <button id="menu-btn-auth" class="btn-lien" type="button">👤 Connexion / Inscription</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section Commandes rapides -->
+        <div class="menu-section">
+          <div class="section-titre">COMMANDES RAPIDES</div>
+          <div class="grille-actions">
+            <button class="btn-action" data-cmd="Quelle est la météo en direct ?">⛅ Météo en direct</button>
+            <button class="btn-action" data-cmd="Quelles sont les dernières actualités aujourd'hui ?">📰 Dernières actualités</button>
+            <button class="btn-action" data-cmd="Quelle heure est-il ?">🕒 Heure actuelle</button>
+            <button class="btn-action" data-cmd="Quel jour sommes-nous ?">📅 Date du jour</button>
+            <button class="btn-action" data-cmd="Mets un minuteur de 5 minutes">⏱️ Minuteur 5 min</button>
+            <button class="btn-action" data-cmd="Mets AC/DC sur YouTube">🎵 Musique YouTube</button>
+            <button class="btn-action" data-cmd="Raconte-moi une blague">😄 Blague</button>
+            <button class="btn-action" data-cmd="Qui es-tu ?">🤖 Présentation</button>
+          </div>
+        </div>
+
+        <!-- Section Contrôles audio -->
+        <div class="menu-section">
+          <div class="section-titre">PARAMÈTRES AUDIO & VOIX</div>
+          <div class="param-groupe">
+            <label for="menu-choix-voix">Voix de l'assistant</label>
+            <select id="menu-choix-voix" class="menu-select"></select>
+          </div>
+          <div class="param-groupe">
+            <div class="param-ligne">
+              <label for="reglage-vitesse">Vitesse d'élocution</label>
+              <span id="valeur-vitesse">1.0x</span>
+            </div>
+            <input id="reglage-vitesse" type="range" min="0.7" max="1.4" step="0.05" value="1.0">
+          </div>
+          <div class="param-groupe">
+            <div class="param-ligne">
+              <label for="reglage-pitch">Tonalité (Pitch)</label>
+              <span id="valeur-pitch">0.85</span>
+            </div>
+            <input id="reglage-pitch" type="range" min="0.5" max="1.5" step="0.05" value="0.85">
+          </div>
+        </div>
+
+        <!-- Section Gestion de la session -->
+        <div class="menu-section">
+          <div class="section-titre">GESTION DES DONNÉES</div>
+          <div class="boutons-session">
+            <button id="btn-effacer-tout" class="btn-danger" type="button">🗑️ Effacer la conversation</button>
+            <button id="btn-telecharger-journal" class="btn-secondaire" type="button">📥 Télécharger l'historique (.txt)</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Modal Configuration Clé API -->
+  <div id="modal-cle" class="modal-cle modal-cle-top" hidden>
+    <div class="modal-contenu">
+      <div class="modal-entete">
+        <div class="auth-titres">
+          <span class="menu-badge">STARK INDUSTRIES // MOTEUR IA</span>
+          <h3>Configuration Clé API</h3>
+        </div>
+        <button id="modal-fermer" type="button" class="btn-fermer" aria-label="Fermer">✕</button>
+      </div>
+      <p class="modal-desc">Collez votre clé API <strong>Google Gemini</strong> ou Claude. Elle sera testée en direct auprès des serveurs Google et activée immédiatement.</p>
+      <div class="modal-form">
+        <input id="input-cle-api" type="password" placeholder="Collez votre clé API Gemini ici..." autocomplete="off">
+        <button id="btn-sauvegarder-cle" type="button" class="btn-primaire">Tester & Enregistrer la clé</button>
+      </div>
+      <div id="modal-message" class="modal-msg"></div>
+    </div>
+  </div>
+
+  <!-- Modal Authentification Compte Stark (Verrou de Sécurité Obligatoire) -->
+  <div id="modal-auth" class="modal-cle modal-auth-gate">
+    <div class="modal-contenu auth-modal-contenu">
+      <div class="modal-entete">
+        <div class="auth-titres">
+          <span class="menu-badge badge-alerte">🔒 PROTOCOLE STARK // ACCÈS VERROUILLÉ</span>
+          <h3 id="auth-modal-titre">AUTHENTIFICATION REQUISE</h3>
+        </div>
+        <button id="auth-modal-fermer" type="button" class="btn-fermer" aria-label="Fermer" hidden>✕</button>
+      </div>
+
+      <p id="auth-modal-desc" class="modal-desc">
+        L'accès à <strong>J.A.R.V.I.S.</strong> nécessite un compte. Créez votre profil ou connectez-vous pour déverrouiller l'unité.
+      </p>
+
+      <div class="auth-onglets">
+        <button id="onglet-inscription" type="button" class="onglet-btn actif">Créer un compte</button>
+        <button id="onglet-connexion" type="button" class="onglet-btn">Connexion</button>
+      </div>
+
+      <form id="form-auth" class="auth-form" autocomplete="off">
+        <div class="auth-champ">
+          <label for="auth-identifiant">Nom d'utilisateur / Alias</label>
+          <input id="auth-identifiant" type="text" placeholder="ex. Tony, Arnaud..." required minlength="2" maxlength="30" autocomplete="username">
+        </div>
+        <div class="auth-champ">
+          <label for="auth-motdepasse">Code d'accès / Mot de passe</label>
+          <input id="auth-motdepasse" type="password" placeholder="Minimum 4 caractères" required minlength="4" autocomplete="current-password">
+        </div>
+        <button id="btn-auth-valider" type="submit" class="btn-primaire btn-auth-submit">Créer mon compte</button>
+        <div class="auth-liens-action">
+          <button id="auth-lien-cle" type="button" class="btn-lien-cle">⚙️ Configurer ou tester la clé API</button>
+        </div>
+      </form>
+      <div id="auth-message" class="modal-msg"></div>
+    </div>
+  </div>
+
+  <main>
+    <section class="reacteur-zone">
+      <button id="reacteur" class="reacteur" type="button" aria-label="Activer le micro">
+        <canvas id="canvas-reacteur" width="420" height="420"></canvas>
+      </button>
+      <p id="statut" class="statut" aria-live="polite">Touchez le réacteur ou appuyez sur Espace pour parler</p>
+      <div id="minuteur" class="minuteur" hidden>
+        <span class="minuteur-label">MINUTEUR</span>
+        <span id="minuteur-temps">00:00</span>
+        <button id="minuteur-stop" type="button" aria-label="Arrêter le minuteur">✕</button>
+      </div>
+    </section>
+
+    <section class="console">
+      <div id="journal" class="journal" aria-live="polite"></div>
+      <form id="formulaire" class="saisie" autocomplete="off">
+        <input id="entree" type="text" placeholder="Parlez ou tapez une commande… (ex. « quelle heure est-il ? »)" aria-label="Commande">
+        <button id="micro" type="button" class="btn-micro" aria-label="Micro">🎙</button>
+        <button type="submit" class="btn-envoyer">Envoyer</button>
+      </form>
+      <div class="options">
+        <label><input id="opt-voix" type="checkbox" checked> Voix</label>
+        <label><input id="opt-continu" type="checkbox"> Écoute continue (« Jarvis… »)</label>
+        <select id="choix-voix" aria-label="Voix"></select>
+      </div>
+    </section>
+  </main>
+
+  <script src="commands.js"></script>
+  <script src="reactor.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

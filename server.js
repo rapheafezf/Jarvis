@@ -642,26 +642,32 @@ async function gererCleApi(req, res) {
 }
 
 function servirFichier(req, res) {
-  let chemin;
-  try {
-    chemin = decodeURIComponent(new URL(req.url, 'http://x').pathname);
-  } catch {
-    res.writeHead(400);
-    return res.end();
-  }
-  if (chemin === '/') chemin = '/index.html';
-  const fichier = path.normalize(path.join(PUBLIC, chemin));
-  if (!fichier.startsWith(PUBLIC + path.sep)) {
-    res.writeHead(403);
-    return res.end('Interdit');
-  }
-  fs.readFile(fichier, (err, data) => {
-    if (err) {
-      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-      return res.end('Introuvable');
+  return new Promise((resolve) => {
+    let chemin;
+    try {
+      chemin = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+    } catch {
+      res.writeHead(400);
+      res.end();
+      return resolve();
     }
-    res.writeHead(200, { 'Content-Type': TYPES[path.extname(fichier)] || 'application/octet-stream' });
-    res.end(data);
+    if (chemin === '/') chemin = '/index.html';
+    const fichier = path.normalize(path.join(PUBLIC, chemin));
+    if (!fichier.startsWith(PUBLIC + path.sep)) {
+      res.writeHead(403);
+      res.end('Interdit');
+      return resolve();
+    }
+    fs.readFile(fichier, (err, data) => {
+      if (err) {
+        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('Introuvable');
+      } else {
+        res.writeHead(200, { 'Content-Type': TYPES[path.extname(fichier)] || 'application/octet-stream' });
+        res.end(data);
+      }
+      resolve();
+    });
   });
 }
 
@@ -677,8 +683,7 @@ async function requestHandler(req, res) {
 
   let pathname = '/';
   try {
-    const raw = req.headers['x-matched-path'] || req.url || '/';
-    pathname = decodeURIComponent(new URL(raw, 'http://localhost').pathname);
+    pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
   } catch {}
 
   const matchRoute = (p) => pathname === p || pathname === p.replace(/^\/api/, '');
@@ -729,11 +734,15 @@ async function requestHandler(req, res) {
     return envoyerJson(res, 200, { ia: provider || 'hors-ligne', model, provider: provider || 'hors-ligne' });
   }
 
+  if (isVercel) {
+    return envoyerJson(res, 404, { ok: false, error: 'Route introuvable' });
+  }
+
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     res.writeHead(405);
     return res.end();
   }
-  servirFichier(req, res);
+  return await servirFichier(req, res);
 }
 
 const serveur = http.createServer(requestHandler);
