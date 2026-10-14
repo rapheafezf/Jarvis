@@ -382,3 +382,132 @@ main {
   border-radius: 4px; padding: 1px 6px; margin-bottom: 4px;
 }
 
+/* ---------- Authentification & Profil Utilisateur ---------- */
+.hud-user-zone {
+  display: flex;
+  align-items: center;
+}
+
+.btn-auth {
+  background: rgba(0, 229, 255, 0.12);
+  border-color: var(--cyan);
+  color: var(--cyan);
+  font-weight: 600;
+}
+.btn-auth:hover {
+  background: rgba(0, 229, 255, 0.25);
+  box-shadow: 0 0 12px rgba(0, 229, 255, 0.4);
+}
+
+.hud-connecte {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.hud-connecte[hidden] {
+  display: none;
+}
+
+.badge-user {
+  font-size: 12px;
+  color: var(--cyan);
+  background: rgba(0, 229, 255, 0.1);
+  border: 1px solid var(--cyan-sombre);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn-deco {
+  padding: 4px 8px;
+  font-size: 13px;
+  border-color: rgba(255, 71, 87, 0.4);
+}
+.btn-deco:hover {
+  border-color: #ff6b81;
+  background: rgba(255, 71, 87, 0.2);
+}
+
+.auth-modal-contenu {
+  max-width: 440px;
+}
+
+.auth-titres {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.auth-onglets {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+  border-bottom: 1px solid var(--cyan-sombre);
+  padding-bottom: 8px;
+}
+
+.onglet-btn {
+  flex: 1;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--texte-2);
+  padding: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.onglet-btn:hover {
+  color: var(--texte);
+}
+.onglet-btn.actif {
+  color: var(--cyan);
+  border-bottom-color: var(--cyan);
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.auth-champ {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.auth-champ label {
+  font-size: 12px;
+  color: var(--texte-2);
+  letter-spacing: 0.05em;
+}
+
+.auth-champ input {
+  background: rgba(0, 0, 0, 0.5);
+  color: var(--texte);
+  border: 1px solid var(--cyan-sombre);
+  border-radius: 8px;
+  padding: 11px 13px;
+  font-size: 14px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.auth-champ input:focus {
+  outline: none;
+  border-color: var(--cyan);
+  box-shadow: 0 0 10px rgba(0, 229, 255, 0.35);
+}
+
+.btn-auth-submit {
+  margin-top: 8px;
+}
+
+

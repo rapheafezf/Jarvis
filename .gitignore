@@ -4,3 +4,7 @@ cle-api.txt*
 .env
 .env*
 .DS_Store
+data/
+*.db
+users.json
+sessions.json

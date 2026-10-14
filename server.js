@@ -4,9 +4,159 @@
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC = path.join(__dirname, 'public');
+const DATA_DIR = path.join(__dirname, 'data');
+const USERS_FILE = path.join(DATA_DIR, 'users.json');
+const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
+
+function initDataDir() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    if (!fs.existsSync(USERS_FILE)) fs.writeFileSync(USERS_FILE, '[]', 'utf8');
+    if (!fs.existsSync(SESSIONS_FILE)) fs.writeFileSync(SESSIONS_FILE, '{}', 'utf8');
+  } catch (e) {
+    console.error('[auth] Erreur création data dir :', e.message);
+  }
+}
+initDataDir();
+
+function chargerUtilisateurs() {
+  try {
+    return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
+  } catch {
+    return [];
+  }
+}
+
+function sauvegarderUtilisateurs(utilisateurs) {
+  try {
+    fs.writeFileSync(USERS_FILE, JSON.stringify(utilisateurs, null, 2), 'utf8');
+  } catch (e) {
+    console.error('[auth] Erreur sauvegarde utilisateurs :', e.message);
+  }
+}
+
+function chargerSessions() {
+  try {
+    return JSON.parse(fs.readFileSync(SESSIONS_FILE, 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+function sauvegarderSessions(sessions) {
+  try {
+    fs.writeFileSync(SESSIONS_FILE, JSON.stringify(sessions, null, 2), 'utf8');
+  } catch (e) {
+    console.error('[auth] Erreur sauvegarde sessions :', e.message);
+  }
+}
+
+function hasherMotDePasse(motDePasse, sel) {
+  return crypto.scryptSync(motDePasse, sel, 64).toString('hex');
+}
+
+function inscrireUtilisateur(username, password) {
+  const nom = String(username || '').trim();
+  const mdp = String(password || '');
+  if (nom.length < 2) throw new Error("Le nom d'utilisateur doit contenir au moins 2 caractères.");
+  if (mdp.length < 4) throw new Error('Le mot de passe doit contenir au moins 4 caractères.');
+
+  const utilisateurs = chargerUtilisateurs();
+  if (utilisateurs.some((u) => u.username.toLowerCase() === nom.toLowerCase())) {
+    throw new Error("Ce nom d'utilisateur est déjà pris.");
+  }
+
+  const sel = crypto.randomBytes(16).toString('hex');
+  const hash = hasherMotDePasse(mdp, sel);
+  const nouvelUtilisateur = {
+    id: 'usr_' + crypto.randomBytes(8).toString('hex'),
+    username: nom,
+    salt: sel,
+    passwordHash: hash,
+    createdAt: new Date().toISOString(),
+  };
+
+  utilisateurs.push(nouvelUtilisateur);
+  sauvegarderUtilisateurs(utilisateurs);
+
+  const token = 'tok_' + crypto.randomBytes(24).toString('hex');
+  const sessions = chargerSessions();
+  sessions[token] = {
+    userId: nouvelUtilisateur.id,
+    username: nouvelUtilisateur.username,
+    createdAt: Date.now(),
+  };
+  sauvegarderSessions(sessions);
+
+  return {
+    user: { id: nouvelUtilisateur.id, username: nouvelUtilisateur.username },
+    token,
+  };
+}
+
+function connecterUtilisateur(username, password) {
+  const nom = String(username || '').trim();
+  const mdp = String(password || '');
+  const utilisateurs = chargerUtilisateurs();
+  const utilisateur = utilisateurs.find((u) => u.username.toLowerCase() === nom.toLowerCase());
+
+  if (!utilisateur) throw new Error('Identifiants incorrects.');
+
+  const hashTest = hasherMotDePasse(mdp, utilisateur.salt);
+  if (!crypto.timingSafeEqual(Buffer.from(hashTest, 'hex'), Buffer.from(utilisateur.passwordHash, 'hex'))) {
+    throw new Error('Identifiants incorrects.');
+  }
+
+  const token = 'tok_' + crypto.randomBytes(24).toString('hex');
+  const sessions = chargerSessions();
+  sessions[token] = {
+    userId: utilisateur.id,
+    username: utilisateur.username,
+    createdAt: Date.now(),
+  };
+  sauvegarderSessions(sessions);
+
+  return {
+    user: { id: utilisateur.id, username: utilisateur.username },
+    token,
+  };
+}
+
+function obtenirUtilisateurDepuisRequete(req) {
+  const authHeader = req.headers['authorization'] || '';
+  let token = '';
+  if (authHeader.startsWith('Bearer ')) {
+    token = authHeader.slice(7).trim();
+  } else {
+    const cookies = req.headers['cookie'] || '';
+    const m = cookies.match(/jarvis_token=([^;]+)/);
+    if (m) token = decodeURIComponent(m[1].trim());
+  }
+  if (!token) return null;
+
+  const sessions = chargerSessions();
+  const session = sessions[token];
+  if (!session) return null;
+
+  return {
+    id: session.userId,
+    username: session.username,
+    token,
+  };
+}
+
+function deconnecterUtilisateur(token) {
+  if (!token) return;
+  const sessions = chargerSessions();
+  if (sessions[token]) {
+    delete sessions[token];
+    sauvegarderSessions(sessions);
+  }
+}
 
 const SYSTEM = [
   'Tu es J.A.R.V.I.S., l\'assistant IA de Tony Stark, au service de ton utilisateur.',
@@ -199,13 +349,13 @@ async function rechercherSurLeWeb(question) {
   return infos.join('\n\n');
 }
 
-async function demanderGemini(messages, apiKey, webContext = '') {
+async function demanderGemini(messages, apiKey, webContext = '', customSystem = '') {
   const contents = messages.map((m) => ({
     role: m.role === 'assistant' ? 'model' : 'user',
     parts: [{ text: m.content }],
   }));
 
-  let systemPrompt = SYSTEM;
+  let systemPrompt = customSystem || SYSTEM;
   if (webContext) {
     systemPrompt += `\n\nVoici des données en direct trouvées sur internet pour t'aider à répondre avec une précision totale :\n${webContext}`;
   }
@@ -252,10 +402,10 @@ async function demanderGemini(messages, apiKey, webContext = '') {
   throw dernierErreur || new Error('Erreur Gemini');
 }
 
-async function demanderClaude(messages, apiKey, webContext = '') {
+async function demanderClaude(messages, apiKey, webContext = '', customSystem = '') {
   const model = process.env.JARVIS_MODEL || 'claude-sonnet-5-5';
   const url = 'https://api.anthropic.com/v1/messages';
-  let systemPrompt = SYSTEM;
+  let systemPrompt = customSystem || SYSTEM;
   if (webContext) {
     systemPrompt += `\n\nDonnées web en direct :\n${webContext}`;
   }
@@ -290,6 +440,18 @@ async function gererChat(req, res) {
   const { provider, key } = getCredentials();
   if (!key) return envoyerJson(res, 200, { reply: reponseHorsLigne(question), mode: 'hors-ligne' });
 
+  // Personnalisation en fonction de l'utilisateur connecté
+  const user = obtenirUtilisateurDepuisRequete(req);
+  let customSystem = '';
+  if (user && user.username) {
+    customSystem = [
+      `Tu es J.A.R.V.I.S., l'assistant IA de Tony Stark, actuellement au service de votre interlocuteur : ${user.username}.`,
+      `Réponds TOUJOURS en français, avec un ton poli, posé et légèrement pince-sans-rire.`,
+      `Appelle l'utilisateur « Monsieur ${user.username} » (ou « Madame » s'il le précise).`,
+      `Tes réponses sont lues à voix haute : 1 à 3 phrases courtes, pas de markdown, pas de listes, pas d'emoji.`,
+    ].join(' ');
+  }
+
   let webContext = '';
   let webRecherche = false;
   if (corps.forceWebSearch || necessiteRechercheWeb(question)) {
@@ -303,9 +465,9 @@ async function gererChat(req, res) {
 
   try {
     const reply = provider === 'gemini'
-      ? await demanderGemini(messages, key, webContext)
-      : await demanderClaude(messages, key, webContext);
-    return envoyerJson(res, 200, { reply, mode: provider, webSearch: webRecherche });
+      ? await demanderGemini(messages, key, webContext, customSystem)
+      : await demanderClaude(messages, key, webContext, customSystem);
+    return envoyerJson(res, 200, { reply, mode: provider, webSearch: webRecherche, user: user ? user.username : null });
   } catch (e) {
     console.error('[jarvis] erreur IA :', e.message);
     return envoyerJson(res, 200, {
@@ -354,7 +516,41 @@ function servirFichier(req, res) {
   });
 }
 
-const serveur = http.createServer((req, res) => {
+const serveur = http.createServer(async (req, res) => {
+  // --- Routes d'authentification ---
+  if (req.url === '/api/auth/register' && req.method === 'POST') {
+    try {
+      const data = JSON.parse(await lireCorps(req));
+      const result = inscrireUtilisateur(data.username, data.password);
+      return envoyerJson(res, 200, { ok: true, ...result });
+    } catch (e) {
+      return envoyerJson(res, 400, { ok: false, error: e.message });
+    }
+  }
+
+  if (req.url === '/api/auth/login' && req.method === 'POST') {
+    try {
+      const data = JSON.parse(await lireCorps(req));
+      const result = connecterUtilisateur(data.username, data.password);
+      return envoyerJson(res, 200, { ok: true, ...result });
+    } catch (e) {
+      return envoyerJson(res, 400, { ok: false, error: e.message });
+    }
+  }
+
+  if (req.url === '/api/auth/me' && req.method === 'GET') {
+    const user = obtenirUtilisateurDepuisRequete(req);
+    if (!user) return envoyerJson(res, 200, { authenticated: false });
+    return envoyerJson(res, 200, { authenticated: true, user: { id: user.id, username: user.username } });
+  }
+
+  if (req.url === '/api/auth/logout' && req.method === 'POST') {
+    const user = obtenirUtilisateurDepuisRequete(req);
+    if (user) deconnecterUtilisateur(user.token);
+    return envoyerJson(res, 200, { ok: true });
+  }
+
+  // --- Routes IA et Clé ---
   if (req.url === '/api/chat' && req.method === 'POST') return void gererChat(req, res);
   if (req.url === '/api/set-key' && req.method === 'POST') return void gererCleApi(req, res);
   if (req.url === '/api/status') {
@@ -366,6 +562,7 @@ const serveur = http.createServer((req, res) => {
       : null;
     return envoyerJson(res, 200, { ia: provider || 'hors-ligne', model, provider: provider || 'hors-ligne' });
   }
+
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     res.writeHead(405);
     return res.end();
@@ -414,4 +611,14 @@ function demarrer(port, essais = 10) {
 
 if (require.main === module) demarrer(PORT);
 
-module.exports = { serveur, nettoyerHistorique, reponseHorsLigne, getCredentials };
+module.exports = {
+  serveur,
+  nettoyerHistorique,
+  reponseHorsLigne,
+  getCredentials,
+  inscrireUtilisateur,
+  connecterUtilisateur,
+  obtenirUtilisateurDepuisRequete,
+  deconnecterUtilisateur,
+  DATA_DIR,
+};

@@ -74,4 +74,75 @@ test('API et fichiers statiques', async (t) => {
 
   // Nettoyer cle-api.txt créé par le test
   try { fs.unlinkSync(fichierCle); } catch {}
+
+  // --- Tests Authentification Compte ---
+  // Inscription réussie
+  const regRes = await fetch(base + '/api/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: 'TonyStark', password: 'arc-reactor-42' }),
+  });
+  const regData = await regRes.json();
+  assert.equal(regRes.status, 200);
+  assert.equal(regData.ok, true);
+  assert.equal(regData.user.username, 'TonyStark');
+  assert.ok(regData.token);
+
+  // Inscription doublon refusée
+  const regDoublon = await fetch(base + '/api/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: 'TonyStark', password: 'autre-password' }),
+  });
+  const regDoublonData = await regDoublon.json();
+  assert.equal(regDoublon.status, 400);
+  assert.equal(regDoublonData.ok, false);
+
+  // Connexion mauvais mot de passe
+  const logBad = await fetch(base + '/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: 'TonyStark', password: 'mauvais-mdp' }),
+  });
+  assert.equal(logBad.status, 400);
+
+  // Connexion réussie
+  const logRes = await fetch(base + '/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: 'TonyStark', password: 'arc-reactor-42' }),
+  });
+  const logData = await logRes.json();
+  assert.equal(logRes.status, 200);
+  assert.equal(logData.ok, true);
+  assert.ok(logData.token);
+  const sessionToken = logData.token;
+
+  // Profil vérifié via token
+  const meRes = await fetch(base + '/api/auth/me', {
+    headers: { Authorization: `Bearer ${sessionToken}` },
+  });
+  const meData = await meRes.json();
+  assert.equal(meRes.status, 200);
+  assert.equal(meData.authenticated, true);
+  assert.equal(meData.user.username, 'TonyStark');
+
+  // Profil non connecté sans token
+  const meAnon = await (await fetch(base + '/api/auth/me')).json();
+  assert.equal(meAnon.authenticated, false);
+
+  // Déconnexion
+  const decoRes = await fetch(base + '/api/auth/logout', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${sessionToken}` },
+  });
+  const decoData = await decoRes.json();
+  assert.equal(decoRes.status, 200);
+  assert.equal(decoData.ok, true);
+
+  // Profil après déconnexion
+  const meApresDeco = await (await fetch(base + '/api/auth/me', {
+    headers: { Authorization: `Bearer ${sessionToken}` },
+  })).json();
+  assert.equal(meApresDeco.authenticated, false);
 });

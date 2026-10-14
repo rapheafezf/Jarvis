@@ -473,9 +473,12 @@
     setStatut('Recherche & réflexion…', true);
     try {
       const forceWeb = $('opt-recherche-web') ? $('opt-recherche-web').checked : true;
+      const headers = { 'Content-Type': 'application/json' };
+      const token = lireStockage('jarvis-auth-token');
+      if (token) headers['Authorization'] = `Bearer ${token}`;
       const r = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           messages: historique.slice(-20),
           forceWebSearch: forceWeb,
@@ -732,6 +735,188 @@
       }
     });
   }
+
+  // ---------- Authentification & Gestion de Session ----------
+  let utilisateurCourant = null;
+  const modalAuth = $('modal-auth');
+  const btnOuvrirAuth = $('btn-connexion');
+  const btnFermerAuth = $('auth-modal-fermer');
+  const ongletConnexion = $('onglet-connexion');
+  const ongletInscription = $('onglet-inscription');
+  const titreAuthModal = $('auth-modal-titre');
+  const formAuth = $('form-auth');
+  const inputIdentifiant = $('auth-identifiant');
+  const inputMotDePasse = $('auth-motdepasse');
+  const btnAuthValider = $('btn-auth-valider');
+  const msgAuth = $('auth-message');
+  const hudConnecte = $('hud-connecte');
+  const labelNomUser = $('nom-utilisateur');
+  const btnDeconnexion = $('btn-deconnexion');
+  const menuNomUser = $('menu-nom-utilisateur');
+  const menuBtnAuth = $('menu-btn-auth');
+
+  let modeAuth = 'login'; // 'login' ou 'register'
+
+  function majInterfaceUtilisateur(user) {
+    utilisateurCourant = user;
+    if (user && user.username) {
+      if (btnOuvrirAuth) btnOuvrirAuth.hidden = true;
+      if (hudConnecte) hudConnecte.hidden = false;
+      if (labelNomUser) labelNomUser.textContent = `👤 ${user.username}`;
+      if (menuNomUser) menuNomUser.textContent = user.username;
+      if (menuBtnAuth) menuBtnAuth.textContent = '🚪 Se déconnecter';
+    } else {
+      if (btnOuvrirAuth) btnOuvrirAuth.hidden = false;
+      if (hudConnecte) hudConnecte.hidden = true;
+      if (labelNomUser) labelNomUser.textContent = '👤 Invité';
+      if (menuNomUser) menuNomUser.textContent = 'Non connecté';
+      if (menuBtnAuth) menuBtnAuth.textContent = '👤 Connexion / Inscription';
+    }
+  }
+
+  function ouvrirModalAuth(mode = 'login') {
+    if (!modalAuth) return;
+    modeAuth = mode;
+    modalAuth.hidden = false;
+    msgAuth.textContent = '';
+    msgAuth.className = 'modal-msg';
+    basculerModeAuth(mode);
+    if (inputIdentifiant) {
+      inputIdentifiant.value = '';
+      inputIdentifiant.focus();
+    }
+    if (inputMotDePasse) inputMotDePasse.value = '';
+  }
+
+  function fermerModalAuth() {
+    if (modalAuth) modalAuth.hidden = true;
+  }
+
+  function basculerModeAuth(mode) {
+    modeAuth = mode;
+    msgAuth.textContent = '';
+    msgAuth.className = 'modal-msg';
+    if (mode === 'login') {
+      ongletConnexion?.classList.add('actif');
+      ongletInscription?.classList.remove('actif');
+      if (titreAuthModal) titreAuthModal.textContent = 'Connexion au Système';
+      if (btnAuthValider) btnAuthValider.textContent = 'Se connecter';
+    } else {
+      ongletInscription?.classList.add('actif');
+      ongletConnexion?.classList.remove('actif');
+      if (titreAuthModal) titreAuthModal.textContent = 'Création de Compte';
+      if (btnAuthValider) btnAuthValider.textContent = 'Créer mon compte';
+    }
+  }
+
+  async function verifierSessionExistante() {
+    const token = lireStockage('jarvis-auth-token');
+    if (!token) {
+      majInterfaceUtilisateur(null);
+      return;
+    }
+    try {
+      const res = await fetch('/api/auth/me', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.authenticated && data.user) {
+        majInterfaceUtilisateur(data.user);
+      } else {
+        ecrireStockage('jarvis-auth-token', '');
+        majInterfaceUtilisateur(null);
+      }
+    } catch {
+      majInterfaceUtilisateur(null);
+    }
+  }
+
+  if (btnOuvrirAuth) btnOuvrirAuth.addEventListener('click', () => ouvrirModalAuth('login'));
+  if (btnFermerAuth) btnFermerAuth.addEventListener('click', fermerModalAuth);
+  if (modalAuth) {
+    modalAuth.addEventListener('click', (e) => {
+      if (e.target === modalAuth) fermerModalAuth();
+    });
+  }
+
+  if (ongletConnexion) ongletConnexion.addEventListener('click', () => basculerModeAuth('login'));
+  if (ongletInscription) ongletInscription.addEventListener('click', () => basculerModeAuth('register'));
+
+  if (menuBtnAuth) {
+    menuBtnAuth.addEventListener('click', () => {
+      fermerMenu();
+      if (utilisateurCourant) {
+        deconnecterSession();
+      } else {
+        ouvrirModalAuth('login');
+      }
+    });
+  }
+
+  async function deconnecterSession() {
+    const token = lireStockage('jarvis-auth-token');
+    if (token) {
+      try {
+        await fetch('/api/auth/logout', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      } catch {}
+    }
+    ecrireStockage('jarvis-auth-token', '');
+    majInterfaceUtilisateur(null);
+    ajouterMessage('jarvis', 'Session fermée, Monsieur. Mode invité activé.');
+    parler('Session fermée, Monsieur.');
+  }
+
+  if (btnDeconnexion) btnDeconnexion.addEventListener('click', deconnecterSession);
+
+  if (formAuth) {
+    formAuth.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = inputIdentifiant.value.trim();
+      const password = inputMotDePasse.value;
+      if (!username || !password) return;
+
+      btnAuthValider.disabled = true;
+      msgAuth.textContent = modeAuth === 'login' ? 'Connexion en cours…' : 'Création du compte…';
+      msgAuth.className = 'modal-msg';
+
+      const endpoint = modeAuth === 'login' ? '/api/auth/login' : '/api/auth/register';
+
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password }),
+        });
+        const data = await res.json();
+        if (data.ok && data.token) {
+          ecrireStockage('jarvis-auth-token', data.token);
+          majInterfaceUtilisateur(data.user);
+          const bienvenue = modeAuth === 'login'
+            ? `Bienvenue de retour, Monsieur ${data.user.username}.`
+            : `Compte initialisé. Ravi de vous rencontrer, Monsieur ${data.user.username}.`;
+          msgAuth.textContent = '✅ ' + bienvenue;
+          msgAuth.className = 'modal-msg succes';
+          ajouterMessage('jarvis', bienvenue);
+          parler(bienvenue);
+          setTimeout(fermerModalAuth, 1200);
+        } else {
+          msgAuth.textContent = 'Erreur : ' + (data.error || 'Identifiants invalides');
+          msgAuth.className = 'modal-msg erreur';
+        }
+      } catch (err) {
+        msgAuth.textContent = 'Erreur de connexion : ' + err.message;
+        msgAuth.className = 'modal-msg erreur';
+      } finally {
+        btnAuthValider.disabled = false;
+      }
+    });
+  }
+
+  // Vérifier la session active au chargement
+  verifierSessionExistante();
 
   if (!SR) btnMicro.title = 'Reconnaissance vocale non supportée par ce navigateur';
   ajouterMessage('jarvis', 'Bonjour Monsieur. J.A.R.V.I.S. en ligne. Touchez le réacteur pour me parler, ou ouvrez le MENU.');

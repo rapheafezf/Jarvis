@@ -19,6 +19,13 @@
       <span id="horloge">--:--:--</span>
       <span id="etat-ia" class="pastille">IA…</span>
       <button id="btn-config-cle" class="btn-hud" type="button" title="Configurer la clé API">⚙️ Clé API</button>
+      <div id="hud-utilisateur-zone" class="hud-user-zone">
+        <button id="btn-connexion" class="btn-hud btn-auth" type="button">👤 Connexion</button>
+        <div id="hud-connecte" class="hud-connecte" hidden>
+          <span id="nom-utilisateur" class="badge-user">👤 Invité</span>
+          <button id="btn-deconnexion" class="btn-hud btn-deco" type="button" title="Se déconnecter">🚪</button>
+        </div>
+      </div>
     </div>
   </header>
 
@@ -53,6 +60,21 @@
                 <input id="opt-recherche-web" type="checkbox" checked>
                 <span class="curseur"></span>
               </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section Profil & Utilisateur -->
+        <div class="menu-section">
+          <div class="section-titre">UTILISATEUR & COMPTE</div>
+          <div class="statut-carte">
+            <div class="statut-ligne">
+              <span>Profil actif</span>
+              <span id="menu-nom-utilisateur" class="valeur-cyan">Non connecté</span>
+            </div>
+            <div class="statut-ligne">
+              <span>Session</span>
+              <button id="menu-btn-auth" class="btn-lien" type="button">👤 Connexion / Inscription</button>
             </div>
           </div>
         </div>
@@ -120,6 +142,37 @@
         <button id="btn-sauvegarder-cle" type="button" class="btn-primaire">Enregistrer & Tester</button>
       </div>
       <div id="modal-message" class="modal-msg"></div>
+    </div>
+  </div>
+
+  <!-- Modal Authentification Compte Stark -->
+  <div id="modal-auth" class="modal-cle" hidden>
+    <div class="modal-contenu auth-modal-contenu">
+      <div class="modal-entete">
+        <div class="auth-titres">
+          <span class="menu-badge">STARK INDUSTRIES // ACCÈS UTILISATEUR</span>
+          <h3 id="auth-modal-titre">Connexion au Système</h3>
+        </div>
+        <button id="auth-modal-fermer" type="button" class="btn-fermer" aria-label="Fermer">✕</button>
+      </div>
+
+      <div class="auth-onglets">
+        <button id="onglet-connexion" type="button" class="onglet-btn actif">Connexion</button>
+        <button id="onglet-inscription" type="button" class="onglet-btn">Créer un compte</button>
+      </div>
+
+      <form id="form-auth" class="auth-form" autocomplete="off">
+        <div class="auth-champ">
+          <label for="auth-identifiant">Nom d'utilisateur / Alias</label>
+          <input id="auth-identifiant" type="text" placeholder="ex. Tony, Arnaud..." required minlength="2" maxlength="30" autocomplete="username">
+        </div>
+        <div class="auth-champ">
+          <label for="auth-motdepasse">Mot de passe</label>
+          <input id="auth-motdepasse" type="password" placeholder="Minimum 4 caractères" required minlength="4" autocomplete="current-password">
+        </div>
+        <button id="btn-auth-valider" type="submit" class="btn-primaire btn-auth-submit">Se connecter</button>
+      </form>
+      <div id="auth-message" class="modal-msg"></div>
     </div>
   </div>
 
