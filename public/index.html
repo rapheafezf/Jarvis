@@ -130,16 +130,19 @@
   </aside>
 
   <!-- Modal Configuration Clé API -->
-  <div id="modal-cle" class="modal-cle" hidden>
+  <div id="modal-cle" class="modal-cle modal-cle-top" hidden>
     <div class="modal-contenu">
       <div class="modal-entete">
-        <h3>Configuration Clé API</h3>
+        <div class="auth-titres">
+          <span class="menu-badge">STARK INDUSTRIES // MOTEUR IA</span>
+          <h3>Configuration Clé API</h3>
+        </div>
         <button id="modal-fermer" type="button" class="btn-fermer" aria-label="Fermer">✕</button>
       </div>
-      <p class="modal-desc">Collez votre clé API <strong>Google Gemini</strong> ou Claude. Elle sera enregistrée et activée immédiatement.</p>
+      <p class="modal-desc">Collez votre clé API <strong>Google Gemini</strong> ou Claude. Elle sera testée en direct auprès des serveurs Google et activée immédiatement.</p>
       <div class="modal-form">
-        <input id="input-cle-api" type="password" placeholder="Collez votre clé API ici..." autocomplete="off">
-        <button id="btn-sauvegarder-cle" type="button" class="btn-primaire">Enregistrer & Tester</button>
+        <input id="input-cle-api" type="password" placeholder="Collez votre clé API Gemini ici..." autocomplete="off">
+        <button id="btn-sauvegarder-cle" type="button" class="btn-primaire">Tester & Enregistrer la clé</button>
       </div>
       <div id="modal-message" class="modal-msg"></div>
     </div>
@@ -175,6 +178,9 @@
           <input id="auth-motdepasse" type="password" placeholder="Minimum 4 caractères" required minlength="4" autocomplete="current-password">
         </div>
         <button id="btn-auth-valider" type="submit" class="btn-primaire btn-auth-submit">Créer mon compte</button>
+        <div class="auth-liens-action">
+          <button id="auth-lien-cle" type="button" class="btn-lien-cle">⚙️ Configurer ou tester la clé API</button>
+        </div>
       </form>
       <div id="auth-message" class="modal-msg"></div>
     </div>

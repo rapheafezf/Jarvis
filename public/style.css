@@ -518,10 +518,38 @@ body.verrouille main {
   transition: filter 0.4s ease, brightness 0.4s ease;
 }
 
-body.verrouille .btn-menu,
-body.verrouille #btn-config-cle {
+body.verrouille .btn-menu {
   pointer-events: none;
   opacity: 0.2;
+}
+
+body.verrouille #btn-config-cle {
+  pointer-events: auto !important;
+  opacity: 1 !important;
+  cursor: pointer;
+}
+
+.modal-cle-top {
+  z-index: 1200 !important;
+}
+
+.auth-liens-action {
+  margin-top: 10px;
+  text-align: center;
+}
+
+.btn-lien-cle {
+  background: none;
+  border: none;
+  color: var(--cyan);
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 6px;
+  transition: color 0.2s;
+}
+.btn-lien-cle:hover {
+  color: #fff;
 }
 
 .modal-auth-gate {

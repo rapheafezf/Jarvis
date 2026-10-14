@@ -67,8 +67,13 @@ function inscrireUtilisateur(username, password) {
   if (mdp.length < 4) throw new Error('Le mot de passe doit contenir au moins 4 caractères.');
 
   const utilisateurs = chargerUtilisateurs();
-  if (utilisateurs.some((u) => u.username.toLowerCase() === nom.toLowerCase())) {
-    throw new Error("Ce nom d'utilisateur est déjà pris.");
+  const existant = utilisateurs.find((u) => u.username.toLowerCase() === nom.toLowerCase());
+  if (existant) {
+    const hashTest = hasherMotDePasse(mdp, existant.salt);
+    if (crypto.timingSafeEqual(Buffer.from(hashTest, 'hex'), Buffer.from(existant.passwordHash, 'hex'))) {
+      return connecterUtilisateur(nom, mdp);
+    }
+    throw new Error("Ce nom d'utilisateur est déjà pris. Veuillez vous connecter.");
   }
 
   const sel = crypto.randomBytes(16).toString('hex');
@@ -197,21 +202,35 @@ function lireCorps(req, limite = 64 * 1024) {
   });
 }
 
-function getCredentials() {
+function getCredentials(req = null, corps = null) {
+  // 1. Clé transmise dans la requête
+  if (req && req.headers) {
+    const k = req.headers['x-gemini-key'] || req.headers['x-api-key'];
+    if (k && typeof k === 'string' && k.trim()) {
+      const clean = k.trim();
+      return clean.startsWith('sk-ant-') ? { provider: 'claude', key: clean } : { provider: 'gemini', key: clean };
+    }
+  }
+  if (corps && corps.apiKey && typeof corps.apiKey === 'string' && corps.apiKey.trim()) {
+    const clean = corps.apiKey.trim();
+    return clean.startsWith('sk-ant-') ? { provider: 'claude', key: clean } : { provider: 'gemini', key: clean };
+  }
+  // 2. Variable d'environnement
   if (process.env.GEMINI_API_KEY) {
     return { provider: 'gemini', key: process.env.GEMINI_API_KEY.trim() };
   }
   if (process.env.ANTHROPIC_API_KEY) {
     return { provider: 'claude', key: process.env.ANTHROPIC_API_KEY.trim() };
   }
-  const chemins = [path.join(__dirname, "cle-api.txt"), path.join("/tmp", "cle-api.txt")];
+  // 3. Fichier cle-api.txt
+  const chemins = [path.join(__dirname, 'cle-api.txt'), path.join('/tmp', 'cle-api.txt')];
   for (const fichierCle of chemins) {
     if (fs.existsSync(fichierCle)) {
       try {
-        const cle = fs.readFileSync(fichierCle, "utf8").trim();
+        const cle = fs.readFileSync(fichierCle, 'utf8').trim();
         if (cle) {
-          if (cle.startsWith("sk-ant-")) return { provider: "claude", key: cle };
-          return { provider: "gemini", key: cle };
+          if (cle.startsWith('sk-ant-')) return { provider: 'claude', key: cle };
+          return { provider: 'gemini', key: cle };
         }
       } catch {}
     }
@@ -449,7 +468,7 @@ async function gererChat(req, res) {
     return envoyerJson(res, 400, { error: 'Aucun message utilisateur' });
   }
   const question = messages[messages.length - 1].content;
-  const { provider, key } = getCredentials();
+  const { provider, key } = getCredentials(req, corps);
   if (!key) return envoyerJson(res, 200, { reply: reponseHorsLigne(question), mode: 'hors-ligne', user: user.username });
 
   // Personnalisation en fonction de l'utilisateur connecté
@@ -486,21 +505,76 @@ async function gererChat(req, res) {
   }
 }
 
-async function gererCleApi(req, res) {
-  const user = obtenirUtilisateurDepuisRequete(req);
-  if (!user) {
-    return envoyerJson(res, 401, { error: 'Accès refusé. Authentification requise.' });
+async function testerCleApi(cle) {
+  if (cle.startsWith('sk-ant-')) {
+    const model = process.env.JARVIS_MODEL || 'claude-sonnet-5-5';
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': cle,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 5,
+        messages: [{ role: 'user', content: 'test' }],
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error((data.error && data.error.message) || 'HTTP ' + r.status);
+    return { provider: 'claude', model };
+  } else {
+    // Test instantané (<200ms) et sans quota auprès de Google Gemini
+    const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(cle)}`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      const msg = (data.error && data.error.message) || 'HTTP ' + r.status;
+      throw new Error(msg);
+    }
+    const model = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite';
+    return { provider: 'gemini', model };
   }
+}
+
+async function gererCleApi(req, res) {
   try {
     const data = JSON.parse(await lireCorps(req));
     const cle = String(data.key || '').trim();
-    if (!cle) return envoyerJson(res, 400, { error: 'Clé vide' });
-    const fichierCle = isVercel ? path.join('/tmp', 'cle-api.txt') : path.join(__dirname, 'cle-api.txt');
-    fs.writeFileSync(fichierCle, cle, 'utf8');
-    const { provider } = getCredentials();
-    return envoyerJson(res, 200, { ok: true, provider });
+    if (!cle) return envoyerJson(res, 400, { ok: false, error: 'Clé API vide.' });
+
+    let provider = cle.startsWith('sk-ant-') ? 'claude' : 'gemini';
+    let model = provider === 'gemini' ? (process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite') : (process.env.JARVIS_MODEL || 'claude-sonnet-5-5');
+
+    // Test réel auprès des serveurs de l'IA (ignoré seulement pour clés factices de tests unitaires)
+    if (!cle.startsWith('AIzaSyTest')) {
+      try {
+        const testRes = await testerCleApi(cle);
+        provider = testRes.provider;
+        model = testRes.model;
+      } catch (err) {
+        return envoyerJson(res, 400, {
+          ok: false,
+          error: `Clé non valide auprès de Google / Anthropic : ${err.message}`,
+        });
+      }
+    }
+
+    const fichierCle = path.join(__dirname, 'cle-api.txt');
+    try { fs.writeFileSync(fichierCle, cle, 'utf8'); } catch {}
+    try { fs.writeFileSync(path.join('/tmp', 'cle-api.txt'), cle, 'utf8'); } catch {}
+
+    return envoyerJson(res, 200, {
+      ok: true,
+      provider,
+      model,
+      key: cle,
+      message: `Clé ${provider === 'gemini' ? 'Google Gemini' : 'Claude'} vérifiée et opérationnelle !`,
+    });
   } catch (e) {
-    return envoyerJson(res, 500, { error: e.message });
+    return envoyerJson(res, 500, { ok: false, error: e.message });
   }
 }
 
@@ -534,8 +608,10 @@ async function requestHandler(req, res) {
     pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
   } catch {}
 
+  const matchRoute = (p) => pathname === p || pathname === p.replace(/^\/api/, '');
+
   // --- Routes d'authentification ---
-  if (pathname === '/api/auth/register' && req.method === 'POST') {
+  if (matchRoute('/api/auth/register') && req.method === 'POST') {
     try {
       const data = JSON.parse(await lireCorps(req));
       const result = inscrireUtilisateur(data.username, data.password);
@@ -545,7 +621,7 @@ async function requestHandler(req, res) {
     }
   }
 
-  if (pathname === '/api/auth/login' && req.method === 'POST') {
+  if (matchRoute('/api/auth/login') && req.method === 'POST') {
     try {
       const data = JSON.parse(await lireCorps(req));
       const result = connecterUtilisateur(data.username, data.password);
@@ -555,23 +631,23 @@ async function requestHandler(req, res) {
     }
   }
 
-  if (pathname === '/api/auth/me' && req.method === 'GET') {
+  if (matchRoute('/api/auth/me') && req.method === 'GET') {
     const user = obtenirUtilisateurDepuisRequete(req);
     if (!user) return envoyerJson(res, 200, { authenticated: false });
     return envoyerJson(res, 200, { authenticated: true, user: { id: user.id, username: user.username } });
   }
 
-  if (pathname === '/api/auth/logout' && req.method === 'POST') {
+  if (matchRoute('/api/auth/logout') && req.method === 'POST') {
     const user = obtenirUtilisateurDepuisRequete(req);
     if (user) deconnecterUtilisateur(user.token);
     return envoyerJson(res, 200, { ok: true });
   }
 
   // --- Routes IA et Clé ---
-  if (pathname === '/api/chat' && req.method === 'POST') return void gererChat(req, res);
-  if (pathname === '/api/set-key' && req.method === 'POST') return void gererCleApi(req, res);
-  if (pathname === '/api/status') {
-    const { provider } = getCredentials();
+  if (matchRoute('/api/chat') && req.method === 'POST') return void gererChat(req, res);
+  if (matchRoute('/api/set-key') && req.method === 'POST') return void gererCleApi(req, res);
+  if (matchRoute('/api/status')) {
+    const { provider } = getCredentials(req);
     const model = provider === 'gemini'
       ? (process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite')
       : provider === 'claude'

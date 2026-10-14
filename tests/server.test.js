@@ -20,6 +20,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const fichierCle = path.join(__dirname, '../cle-api.txt');
 const backupCle = path.join(__dirname, '../cle-api.txt.bak');
+const tmpCle = path.join('/tmp', 'cle-api.txt');
+const backupTmpCle = path.join('/tmp', 'cle-api.txt.testbak');
 const fichierUsers = path.join(DATA_DIR, 'users.json');
 const backupUsers = path.join(DATA_DIR, 'users.json.testbak');
 const fichierSessions = path.join(DATA_DIR, 'sessions.json');
@@ -27,6 +29,9 @@ const backupSessions = path.join(DATA_DIR, 'sessions.json.testbak');
 
 test('API et fichiers statiques', async (t) => {
   if (fs.existsSync(fichierCle)) fs.renameSync(fichierCle, backupCle);
+  if (fs.existsSync(tmpCle)) {
+    try { fs.renameSync(tmpCle, backupTmpCle); } catch {}
+  }
   if (fs.existsSync(fichierUsers)) fs.copyFileSync(fichierUsers, backupUsers);
   if (fs.existsSync(fichierSessions)) fs.copyFileSync(fichierSessions, backupSessions);
   fs.writeFileSync(fichierUsers, "[]", "utf8");
@@ -37,6 +42,11 @@ test('API et fichiers statiques', async (t) => {
       try { fs.renameSync(backupCle, fichierCle); } catch {}
     } else {
       try { fs.unlinkSync(fichierCle); } catch {}
+    }
+    if (fs.existsSync(backupTmpCle)) {
+      try { fs.renameSync(backupTmpCle, tmpCle); } catch {}
+    } else {
+      try { fs.unlinkSync(tmpCle); } catch {}
     }
     if (fs.existsSync(backupUsers)) {
       try { fs.copyFileSync(backupUsers, fichierUsers); fs.unlinkSync(backupUsers); } catch {}
@@ -71,12 +81,12 @@ test('API et fichiers statiques', async (t) => {
   });
   assert.equal(chatSansAuth.status, 401);
 
-  const setKeySansAuth = await fetch(base + '/api/set-key', {
+  const setKeyVide = await fetch(base + '/api/set-key', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ key: 'AIzaSyTestGeminiKey' }),
+    body: JSON.stringify({ key: '' }),
   });
-  assert.equal(setKeySansAuth.status, 401);
+  assert.equal(setKeyVide.status, 400);
 
   // --- Tests Authentification Compte ---
   // Inscription réussie

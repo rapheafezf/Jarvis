@@ -484,12 +484,15 @@
       const headers = { 'Content-Type': 'application/json' };
       const token = lireStockage('jarvis-auth-token');
       if (token) headers['Authorization'] = `Bearer ${token}`;
+      const clePerso = lireStockage('jarvis-gemini-key');
+      if (clePerso) headers['x-gemini-key'] = clePerso;
       const r = await fetch('/api/chat', {
         method: 'POST',
         headers,
         body: JSON.stringify({
           messages: historique.slice(-20),
           forceWebSearch: forceWeb,
+          apiKey: clePerso || undefined,
         }),
         signal: ctrl.signal,
       });
@@ -579,10 +582,17 @@
     }
   }
 
-  fetch('/api/status')
-    .then((r) => r.json())
-    .then(mettreAJourStatutIA)
-    .catch(() => { $('etat-ia').textContent = 'IA : ?'; });
+  function verifierStatutIA() {
+    const clePerso = lireStockage('jarvis-gemini-key');
+    const headers = {};
+    if (clePerso) headers['x-gemini-key'] = clePerso;
+    fetch('/api/status', { headers })
+      .then((r) => r.json())
+      .then(mettreAJourStatutIA)
+      .catch(() => { $('etat-ia').textContent = 'IA : ?'; });
+  }
+
+  verifierStatutIA();
 
   // ---------- Menu Latéral HUD ----------
   const menuLateral = $('menu-lateral');
@@ -697,7 +707,8 @@
     modal.hidden = false;
     msgModal.textContent = '';
     msgModal.className = 'modal-msg';
-    inputCle.value = '';
+    const cleSauvee = lireStockage('jarvis-gemini-key');
+    if (cleSauvee) inputCle.value = cleSauvee;
     inputCle.focus();
   }
 
@@ -717,6 +728,13 @@
     });
   }
 
+  const btnLienCle = $('auth-lien-cle');
+  if (btnLienCle) {
+    btnLienCle.addEventListener('click', () => {
+      ouvrirModal();
+    });
+  }
+
   if (btnSauvegarder) {
     btnSauvegarder.addEventListener('click', async () => {
       const cle = inputCle.value.trim();
@@ -726,7 +744,7 @@
         return;
       }
       btnSauvegarder.disabled = true;
-      msgModal.textContent = 'Enregistrement et test en cours…';
+      msgModal.textContent = 'Validation en direct auprès des serveurs Google / Anthropic…';
       msgModal.className = 'modal-msg';
 
       try {
@@ -737,14 +755,14 @@
         });
         const data = await res.json();
         if (data.ok) {
-          msgModal.textContent = '✅ Clé ' + (data.provider === 'gemini' ? 'Gemini' : 'Claude') + ' enregistrée et opérationnelle !';
+          ecrireStockage('jarvis-gemini-key', cle);
+          msgModal.textContent = '✅ ' + (data.message || 'Clé validée et opérationnelle !');
           msgModal.className = 'modal-msg succes';
-          parler('Clé ' + (data.provider === 'gemini' ? 'Gemini' : 'Claude') + ' activée, Monsieur.');
-          const s = await (await fetch('/api/status')).json();
-          mettreAJourStatutIA(s);
+          parler('Clé validée et opérationnelle, Monsieur.');
+          verifierStatutIA();
           setTimeout(fermerModal, 1500);
         } else {
-          msgModal.textContent = 'Erreur : ' + (data.error || 'Impossible d\'enregistrer la clé.');
+          msgModal.textContent = '❌ ' + (data.error || 'Impossible de valider cette clé.');
           msgModal.className = 'modal-msg erreur';
         }
       } catch (err) {
